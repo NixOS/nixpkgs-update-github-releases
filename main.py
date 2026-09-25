@@ -76,6 +76,7 @@ HTTP = CacheControl(sess, cache=FileCache(CACHE_DIR.resolve()))
 class Package(pydantic.BaseModel):
     name: str
     version: str
+    has_update_script: bool
     pages: list[str]
 
 
@@ -121,9 +122,8 @@ def eval_packages(url=MASTER) -> list[Package]:
 
 
 def find_update(pkg: Package) -> tuple[str, str] | None:
-    # TODO: check if it has an updateScript
-    # skip python3*, packages have an updateScript
-    if pkg.name.startswith("python3"):
+    if pkg.has_update_script:
+        _logger.debug("skipping package %s because it has an updateScript", pkg.name)
         return None
 
     # skip typstPackages*, package set

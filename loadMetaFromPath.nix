@@ -20,6 +20,7 @@ let
               version =
                 value.version or
                 null;
+              has_update_script = value ? "updateScript";
               pages =
                 maybeToList (value.src.meta.homepage or null) ++
                 value.src.urls or [] ++
@@ -29,7 +30,7 @@ let
             assert pkgs.lib.isString version;
             assert pkgs.lib.all pkgs.lib.isString pages;
             {
-              inherit name version pages;
+              inherit name version has_update_script pages;
             }
           )
         );
