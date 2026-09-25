@@ -140,11 +140,20 @@ def find_update(pkg: Package) -> tuple[str, str] | None:
 
     user, repo = userRepo
 
-    next_version = find_next_version_of_repo(pkg.version, url)
-    if next_version is None:
+    latest_version = find_latest_version_of_repo(pkg.version, url)
+    if latest_version is None:
         return None
 
-    return next_version, f"https://github.com/{user}/{repo}/releases"
+    if libversion.version_compare(pkg.version, latest_version) >= 0:
+        _logger.debug(
+            "skipping package %s because %s is >= the current version %s according to libversion",
+            pkg.name,
+            pkg.version,
+            latest_version,
+        )
+        return None
+
+    return latest_version, f"https://github.com/{user}/{repo}/releases"
 
 
 def getUserRepoPair(url):
@@ -374,7 +383,7 @@ def parseUnstable(release):
     return date_obj
 
 
-def find_next_version_of_repo(version, homepage):
+def find_latest_version_of_repo(version: str, homepage: str) -> str | None:
     userRepo = getUserRepoPair(homepage)
 
     if userRepo is None:
@@ -403,9 +412,6 @@ def find_next_version_of_repo(version, homepage):
         return
 
     nextVersion = stripRelease(userRepo[1], nextVersion)
-
-    if libversion.version_compare(version, nextVersion) >= 0:
-        return
 
     return nextVersion
 
