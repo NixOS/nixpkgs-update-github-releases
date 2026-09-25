@@ -22,6 +22,15 @@ import requests
 from cachecontrol import CacheControl
 from cachecontrol.caches import FileCache
 
+
+def main():
+    packages = eval_packages()
+    for pkg_name, pkg in packages.items():
+        update = find_update(pkg_name, pkg)
+        if update:
+            print(pkg_name, pkg["version"], *update, flush=True)
+
+
 log = partial(print, file=sys.stderr)
 plog = partial(pprint, stream=sys.stderr)
 
@@ -63,7 +72,7 @@ else:
 HTTP = CacheControl(sess, cache=FileCache(CACHE_DIR.resolve()))
 
 
-def loadVersions(url=MASTER):
+def eval_packages(url=MASTER) -> dict[str, dict]:
     with tempfile.NamedTemporaryFile(mode="w") as f:
         subprocess.check_call(
             [
@@ -102,6 +111,32 @@ def loadVersions(url=MASTER):
     if hour > 11:
         data = {key: data[key] for key in reversed(data)}
     return data
+
+
+def find_update(pkg_name: str, pkg: dict) -> tuple[str, str] | None:
+    # TODO: check if it has an updateScript
+    # skip python3*, packages have an updateScript
+    if pkg_name.startswith("python3"):
+        return None
+
+    # skip typstPackages*, package set
+    if pkg_name.startswith("typstPackages"):
+        return None
+
+    for url in pkg["pages"]:
+        userRepo = getUserRepoPair(url)
+        if userRepo is not None:
+            break
+    else:
+        return None
+
+    user, repo = userRepo
+
+    next_version = find_next_version_of_repo(pkg["version"], url)
+    if next_version is None:
+        return None
+
+    return next_version, f"https://github.com/{user}/{repo}/releases"
 
 
 def getUserRepoPair(url):
@@ -330,7 +365,7 @@ def parseUnstable(release):
     return date_obj
 
 
-def getNextVersion(version, homepage):
+def find_next_version_of_repo(version, homepage):
     userRepo = getUserRepoPair(homepage)
 
     if userRepo is None:
@@ -363,47 +398,11 @@ def getNextVersion(version, homepage):
     return nextVersion
 
 
-def updateLines(meta):
-    for name, values in meta.items():
-        # skip python3*, packages have an updateScript
-        if name.startswith("python3"):
-            continue
-
-        # skip typstPackages*, package set
-        if name.startswith("typstPackages"):
-            continue
-
-        version = values["version"]
-
-        for page in values["pages"]:
-            userRepo = getUserRepoPair(page)
-            if userRepo is not None:
-                break
-        else:
-            continue
-
-        user, repo = userRepo
-
-        nextVersion = getNextVersion(version, page)
-        if nextVersion is None:
-            continue
-
-        url = f"https://github.com/{user}/{repo}/releases"
-
-        yield name, version, nextVersion, url
-
-
-def main():
+if __name__ == "__main__":
     try:
-        meta = loadVersions()
-        for line in updateLines(meta):
-            print(*line, flush=True)
+        main()
     except KeyboardInterrupt:
         log(" Shutting down...")
     finally:
         log("Cached stats:")
         plog(dict(CACHE_STATS))
-
-
-if __name__ == "__main__":
-    main()
