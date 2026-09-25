@@ -15,7 +15,6 @@ from pprint import pformat
 from time import sleep
 from urllib.parse import urljoin, urlparse
 
-import dateutil.parser
 import libversion
 import pydantic
 import requests
@@ -140,7 +139,16 @@ def find_update(pkg: Package) -> tuple[str, str] | None:
 
     user, repo = userRepo
 
-    latest_version = find_latest_version_of_repo(pkg.version, url)
+    if "-unstable-" in pkg.version or pkg.version.startswith("unstable-"):
+        # nixpkgs-update doesn't support updating the rev.
+        _logger.debug(
+            "skipping package %s because the current version %s contains unstable-",
+            pkg.name,
+            pkg.version,
+        )
+        return None
+
+    latest_version = find_latest_version_of_repo(url)
     if latest_version is None:
         return None
 
@@ -317,9 +325,7 @@ def latestRelease(user, repo):
         # No matching releases
         return
 
-    date = dateutil.parser.parse(tag.get("created_at"))
-
-    return release, date
+    return release
 
 
 def removePrefix(prefix, string):
@@ -361,51 +367,15 @@ def skipPrerelease(release):
     return any(marker in release for marker in markers)
 
 
-# Returns either a date object or none.
-def parseUnstable(release):
-    unstable = "unstable-"
-
-    shouldParse = release.startswith(unstable)
-
-    release_ = removePrefix("unstable-", release)
-
-    try:
-        date_obj = datetime.datetime.strptime(release_, "%Y-%m-%d")
-    except ValueError:
-        if shouldParse:
-            _logger.info(
-                "Could not parse unstable date %s! This should probably "
-                "be fixed, either in nixpkgs or in this script.",
-                release,
-            )
-        return
-
-    return date_obj
-
-
-def find_latest_version_of_repo(version: str, homepage: str) -> str | None:
+def find_latest_version_of_repo(homepage: str) -> str | None:
     userRepo = getUserRepoPair(homepage)
 
     if userRepo is None:
         return
 
-    nextVersionDate = latestRelease(*userRepo)
+    nextVersion = latestRelease(*userRepo)
 
-    if nextVersionDate is None:
-        return
-
-    nextVersion, nextDate = nextVersionDate
-
-    currDate = parseUnstable(version)
-
-    if currDate is not None and nextDate.date() <= currDate.date():
-        _logger.info(
-            "Discarding unfit version %s (%s), because it "
-            "is older than our current version %s.",
-            nextVersion,
-            nextDate,
-            version,
-        )
+    if nextVersion is None:
         return
 
     if skipPrerelease(nextVersion):
