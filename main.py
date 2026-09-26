@@ -2,17 +2,16 @@
 
 import datetime
 import json
+import logging
 import os
 import re
 import subprocess
-import sys
 import tempfile
 from collections import defaultdict
-from functools import partial
 from itertools import count
 from json.decoder import JSONDecodeError
 from pathlib import Path
-from pprint import pprint
+from pprint import pformat
 from time import sleep
 from urllib.parse import urljoin, urlparse
 
@@ -32,8 +31,10 @@ def main():
             print(pkg.name, pkg.version, *update, flush=True)
 
 
-log = partial(print, file=sys.stderr)
-plog = partial(pprint, stream=sys.stderr)
+logging.basicConfig(
+    level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s"
+)
+_logger = logging.getLogger(__name__)
 
 DOT = Path(__file__).resolve().parent
 LOAD_META_FROM_PATH = DOT / "loadMetaFromPath.nix"
@@ -44,7 +45,7 @@ CACHE_DIR = (
     / "nixpkgs-update-github-releases"
 )
 
-log("Cache dir:", CACHE_DIR.resolve())
+_logger.info("Cache dir: %s", CACHE_DIR.resolve())
 
 # Keep stats about caching
 CACHE_STATS = defaultdict(int)
@@ -65,7 +66,7 @@ if API_TOKEN is not None:
     sess.auth = (username, token)
 
 else:
-    log(
+    _logger.info(
         "No API token set! You can do this by setting the environment variable "
         "API_TOKEN to `<username>:<personal access token>`"
     )
@@ -166,7 +167,7 @@ def getUserRepoPair(url):
         re.VERBOSE,
     )
     if m is None:
-        log(f"Could not parse github url: {url}")
+        _logger.info("Could not parse github url: %s", url)
         return
 
     user, repo = m.groups()
@@ -177,12 +178,12 @@ def sleepUntil(timestamp):
     if not isinstance(timestamp, datetime.datetime):
         timestamp = datetime.datetime.fromtimestamp(timestamp)
 
-    log("Sleeping until", timestamp)
+    _logger.info("Sleeping until %s", timestamp)
 
     now = datetime.datetime.now()
     while now < timestamp:
         timeDiff = timestamp - datetime.datetime.now()
-        log(timeDiff, "left")
+        _logger.info("%s left", timeDiff)
         toSleep = timeDiff / 2
         sleep(toSleep.total_seconds() + 1)
         now = datetime.datetime.now()
@@ -200,23 +201,23 @@ def getEndpoint(endpoint, base="https://api.github.com/", max_retries=10):
         CACHE_STATS[from_cache] += 1
 
         if status == 500:
-            log("Host is having trouble. Let's give them some time.")
+            _logger.info("Host is having trouble. Let's give them some time.")
             sleep(error_sleep)
             error_sleep *= 2
             continue
 
         if status == 451:
-            log("Endpoint", endpoint, "Unavailable For Legal Reasons")
+            _logger.info("Endpoint %s Unavailable For Legal Reasons", endpoint)
             return
 
         if status == 404:
-            log("Endpoint", endpoint, "not found")
+            _logger.info("Endpoint %s not found", endpoint)
             return
 
         if status == 403:
             message = resp.json().get("message", "")
             if message:
-                log(message)
+                _logger.info("%s", message)
 
             if "exceeded" in message:
                 # Fall through to rateRemaining logic
@@ -225,15 +226,15 @@ def getEndpoint(endpoint, base="https://api.github.com/", max_retries=10):
                 sleep(10)
                 continue
             elif "blocked" in message:
-                log("Endpoint", endpoint, "blocked")
+                _logger.info("Endpoint %s blocked", endpoint)
                 return
             else:
                 raise Exception("Got 403, but we can't tell why.", message)
 
         rateRemaining = resp.headers.get("X-RateLimit-Remaining")
         if rateRemaining is None:
-            log("Host did not send X-RateLimit-Remaining header.")
-            log("Status code:", resp.status_code)
+            _logger.info("Host did not send X-RateLimit-Remaining header.")
+            _logger.info("Status code: %s", resp.status_code)
 
             sleep(1)
             continue
@@ -241,11 +242,11 @@ def getEndpoint(endpoint, base="https://api.github.com/", max_retries=10):
         rateRemaining = int(rateRemaining)
 
         if not from_cache and rateRemaining % 100 == 0:
-            log(rateRemaining, "requests remaining this hour!")
+            _logger.info("%s requests remaining this hour!", rateRemaining)
 
         if rateRemaining == 0:
-            log("No rate :(")
-            plog(dict(resp.headers))
+            _logger.info("No rate :(")
+            _logger.info("%s", pformat(dict(resp.headers)))
             sleepUntil(int(resp.headers["X-Ratelimit-Reset"]))
             sleep(5)  # in case of clock disagreement, add a little buffer
             continue
@@ -272,7 +273,7 @@ def iterReleases(user, repo):
 
     for page in count(1):
         if page > 1:
-            log("Fetching page", page, f"for {user}/{repo}")
+            _logger.info("Fetching page %s for %s/%s", page, user, repo)
 
         result = getEndpoint(f"/repos/{user}/{repo}/releases?page={page}")
 
@@ -297,11 +298,11 @@ def latestRelease(user, repo):
         if tag.get("prerelease"):
             continue
         if skipPrerelease(release):
-            log("Skipping non-tagged prerelease", release)
+            _logger.info("Skipping non-tagged prerelease %s", release)
             verboseMatch = True
             continue
         if verboseMatch:
-            log("Rescued it with", release, ":)")
+            _logger.info("Rescued it with %s :)", release)
         break
     else:
         # No matching releases
@@ -363,9 +364,10 @@ def parseUnstable(release):
         date_obj = datetime.datetime.strptime(release_, "%Y-%m-%d")
     except ValueError:
         if shouldParse:
-            log(
-                f"Could not parse unstable date {release}! This should probably "
-                "be fixed, either in nixpkgs or in this script."
+            _logger.info(
+                "Could not parse unstable date %s! This should probably "
+                "be fixed, either in nixpkgs or in this script.",
+                release,
             )
         return
 
@@ -388,9 +390,12 @@ def find_next_version_of_repo(version, homepage):
     currDate = parseUnstable(version)
 
     if currDate is not None and nextDate.date() <= currDate.date():
-        log(
-            f"Discarding unfit version {nextVersion} ({nextDate}), because it "
-            f"is older than our current version {version}."
+        _logger.info(
+            "Discarding unfit version %s (%s), because it "
+            "is older than our current version %s.",
+            nextVersion,
+            nextDate,
+            version,
         )
         return
 
@@ -409,7 +414,7 @@ if __name__ == "__main__":
     try:
         main()
     except KeyboardInterrupt:
-        log(" Shutting down...")
+        _logger.info("Shutting down...")
     finally:
-        log("Cached stats:")
-        plog(dict(CACHE_STATS))
+        _logger.info("Cached stats:")
+        _logger.info("%s", pformat(dict(CACHE_STATS)))
