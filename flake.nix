@@ -29,6 +29,7 @@
             filelock
             libversion
             lockfile
+            pydantic
             python-dateutil
             requests
           ];

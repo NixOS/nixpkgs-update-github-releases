@@ -18,6 +18,7 @@ from urllib.parse import urljoin, urlparse
 
 import dateutil.parser
 import libversion
+import pydantic
 import requests
 from cachecontrol import CacheControl
 from cachecontrol.caches import FileCache
@@ -28,7 +29,7 @@ def main():
     for pkg in packages:
         update = find_update(pkg)
         if update:
-            print(pkg["name"], pkg["version"], *update, flush=True)
+            print(pkg.name, pkg.version, *update, flush=True)
 
 
 log = partial(print, file=sys.stderr)
@@ -72,7 +73,13 @@ else:
 HTTP = CacheControl(sess, cache=FileCache(CACHE_DIR.resolve()))
 
 
-def eval_packages(url=MASTER) -> list[dict]:
+class Package(pydantic.BaseModel):
+    name: str
+    version: str
+    pages: list[str]
+
+
+def eval_packages(url=MASTER) -> list[Package]:
     with tempfile.NamedTemporaryFile(mode="w") as f:
         subprocess.check_call(
             [
@@ -107,23 +114,23 @@ def eval_packages(url=MASTER) -> list[dict]:
 
     # seems github is flaky, reverse fetch order for better distribution
     hour = datetime.datetime.now().hour
-    data = json.loads(json_output)
+    data = pydantic.TypeAdapter(list[Package]).validate_json(json_output)
     if hour > 11:
         data = list(reversed(data))
     return data
 
 
-def find_update(pkg: dict) -> tuple[str, str] | None:
+def find_update(pkg: Package) -> tuple[str, str] | None:
     # TODO: check if it has an updateScript
     # skip python3*, packages have an updateScript
-    if pkg["name"].startswith("python3"):
+    if pkg.name.startswith("python3"):
         return None
 
     # skip typstPackages*, package set
-    if pkg["name"].startswith("typstPackages"):
+    if pkg.name.startswith("typstPackages"):
         return None
 
-    for url in pkg["pages"]:
+    for url in pkg.pages:
         userRepo = getUserRepoPair(url)
         if userRepo is not None:
             break
@@ -132,7 +139,7 @@ def find_update(pkg: dict) -> tuple[str, str] | None:
 
     user, repo = userRepo
 
-    next_version = find_next_version_of_repo(pkg["version"], url)
+    next_version = find_next_version_of_repo(pkg.version, url)
     if next_version is None:
         return None
 
