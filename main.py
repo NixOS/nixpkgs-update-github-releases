@@ -25,10 +25,10 @@ from cachecontrol.caches import FileCache
 
 def main():
     packages = eval_packages()
-    for pkg_name, pkg in packages.items():
-        update = find_update(pkg_name, pkg)
+    for pkg in packages:
+        update = find_update(pkg)
         if update:
-            print(pkg_name, pkg["version"], *update, flush=True)
+            print(pkg["name"], pkg["version"], *update, flush=True)
 
 
 log = partial(print, file=sys.stderr)
@@ -72,7 +72,7 @@ else:
 HTTP = CacheControl(sess, cache=FileCache(CACHE_DIR.resolve()))
 
 
-def eval_packages(url=MASTER) -> dict[str, dict]:
+def eval_packages(url=MASTER) -> list[dict]:
     with tempfile.NamedTemporaryFile(mode="w") as f:
         subprocess.check_call(
             [
@@ -109,18 +109,18 @@ def eval_packages(url=MASTER) -> dict[str, dict]:
     hour = datetime.datetime.now().hour
     data = json.loads(json_output)
     if hour > 11:
-        data = {key: data[key] for key in reversed(data)}
+        data = list(reversed(data))
     return data
 
 
-def find_update(pkg_name: str, pkg: dict) -> tuple[str, str] | None:
+def find_update(pkg: dict) -> tuple[str, str] | None:
     # TODO: check if it has an updateScript
     # skip python3*, packages have an updateScript
-    if pkg_name.startswith("python3"):
+    if pkg["name"].startswith("python3"):
         return None
 
     # skip typstPackages*, package set
-    if pkg_name.startswith("typstPackages"):
+    if pkg["name"].startswith("typstPackages"):
         return None
 
     for url in pkg["pages"]:

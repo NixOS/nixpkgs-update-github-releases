@@ -28,8 +28,8 @@ let
             in
             assert pkgs.lib.isString version;
             assert pkgs.lib.all pkgs.lib.isString pages;
-            pkgs.lib.nameValuePair name {
-              inherit version pages;
+            {
+              inherit name version pages;
             }
           )
         );
@@ -37,6 +37,5 @@ let
         if result.success then result.value else null
     )
     (pkgs.lib.splitString "\n" (pkgs.lib.fileContents universeFile));
-  filtered = pkgs.lib.filter (x: x != null) versions;
 in
-  pkgs.lib.listToAttrs filtered
+  pkgs.lib.filter (x: x != null) versions
