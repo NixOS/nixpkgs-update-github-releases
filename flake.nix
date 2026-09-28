@@ -40,9 +40,25 @@
         default = inputs.self.packages.${system}.nixpkgs-update-github-releases;
       }) inputs.nixpkgs.legacyPackages;
 
+      checks = builtins.mapAttrs (system: pkgs: {
+        ruff-format =
+          pkgs.runCommand "ruff-format-check"
+            {
+              nativeBuildInputs = [ pkgs.ruff ];
+            }
+            ''
+              cd ${./.}
+              ruff format --check --no-cache .
+              touch $out
+            '';
+      }) inputs.nixpkgs.legacyPackages;
+
       devShells = builtins.mapAttrs (system: pkgs: {
         default = pkgs.mkShell {
-          inputsFrom = [ inputs.self.packages.${system}.default ];
+          inputsFrom = [ inputs.self.packages.${system}.nixpkgs-update-github-releases ];
+          packages = with pkgs; [
+            ruff
+          ];
         };
       }) inputs.nixpkgs.legacyPackages;
     };
