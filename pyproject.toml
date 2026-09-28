@@ -15,3 +15,6 @@ variable = "version"
 
 [tool.hatch.build.targets.wheel]
 only-include = ["main.py", "loadMetaFromPath.nix"]
+
+[tool.ruff.lint]
+select = ["I"] # TODO: run more lints

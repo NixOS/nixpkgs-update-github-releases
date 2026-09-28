@@ -1,27 +1,26 @@
 #!/usr/bin/env python3
 
-import subprocess
-import json
-from json.decoder import JSONDecodeError
-import re
-import requests
 import datetime
-import dateutil.parser
-from urllib.parse import urlparse, urljoin
-import libversion
+import json
+import os
+import re
+import subprocess
+import sys
 import tempfile
-
-from cachecontrol import CacheControl
-from cachecontrol.caches import FileCache
+from collections import defaultdict
+from functools import partial
+from itertools import count
+from json.decoder import JSONDecodeError
 from pathlib import Path
 from pprint import pprint
 from time import sleep
-from functools import partial
-from collections import defaultdict
-from itertools import count
+from urllib.parse import urljoin, urlparse
 
-import os
-import sys
+import dateutil.parser
+import libversion
+import requests
+from cachecontrol import CacheControl
+from cachecontrol.caches import FileCache
 
 log = partial(print, file=sys.stderr)
 plog = partial(pprint, stream=sys.stderr)
