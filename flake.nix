@@ -51,6 +51,17 @@
               ruff format --check --no-cache .
               touch $out
             '';
+
+        ruff-check =
+          pkgs.runCommand "ruff-check"
+            {
+              nativeBuildInputs = [ pkgs.ruff ];
+            }
+            ''
+              cd ${./.}
+              ruff check --no-cache .
+              touch $out
+            '';
       }) inputs.nixpkgs.legacyPackages;
 
       devShells = builtins.mapAttrs (system: pkgs: {
