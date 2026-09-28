@@ -62,6 +62,20 @@
               ruff check --no-cache .
               touch $out
             '';
+
+        pyright =
+          pkgs.runCommand "pyright"
+            {
+              nativeBuildInputs = [
+                pkgs.pyright
+                inputs.self.packages.${system}.nixpkgs-update-github-releases
+              ];
+            }
+            ''
+              cd ${./.}
+              pyright .
+              touch $out
+            '';
       }) inputs.nixpkgs.legacyPackages;
 
       devShells = builtins.mapAttrs (system: pkgs: {
@@ -69,6 +83,7 @@
           inputsFrom = [ inputs.self.packages.${system}.nixpkgs-update-github-releases ];
           packages = with pkgs; [
             ruff
+            pyright
           ];
         };
       }) inputs.nixpkgs.legacyPackages;
