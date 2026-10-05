@@ -1,26 +1,27 @@
 #!/usr/bin/env python3
 
-import datetime
-import json
-import os
-import re
 import subprocess
-import sys
-import tempfile
-from collections import defaultdict
-from functools import partial
-from itertools import count
+import json
 from json.decoder import JSONDecodeError
+import re
+import requests
+import datetime
+import dateutil.parser
+from urllib.parse import urlparse, urljoin
+import libversion
+import tempfile
+
+from cachecontrol import CacheControl
+from cachecontrol.caches import FileCache
 from pathlib import Path
 from pprint import pprint
 from time import sleep
-from urllib.parse import urljoin, urlparse
+from functools import partial
+from collections import defaultdict
+from itertools import count
 
-import dateutil.parser
-import libversion
-import requests
-from cachecontrol import CacheControl
-from cachecontrol.caches import FileCache
+import os
+import sys
 
 log = partial(print, file=sys.stderr)
 plog = partial(pprint, stream=sys.stderr)
@@ -51,8 +52,7 @@ except:
 
 
 if API_TOKEN is not None:
-    username, token = API_TOKEN.split(":")
-    sess.auth = (username, token)
+    sess.auth = tuple(API_TOKEN.split(":"))
 
 else:
     log(
@@ -151,11 +151,10 @@ def getEndpoint(endpoint, base="https://api.github.com/", max_retries=10):
     error_sleep = 1
     for _ in range(max_retries):
         resp = HTTP.get(url)
-        from_cache: bool = getattr(resp, "from_cache")
         status = resp.status_code
 
         # Save cache stats:
-        CACHE_STATS[from_cache] += 1
+        CACHE_STATS[resp.from_cache] += 1
 
         if status == 500:
             log("Host is having trouble. Let's give them some time.")
@@ -198,7 +197,7 @@ def getEndpoint(endpoint, base="https://api.github.com/", max_retries=10):
 
         rateRemaining = int(rateRemaining)
 
-        if not from_cache and rateRemaining % 100 == 0:
+        if not resp.from_cache and rateRemaining % 100 == 0:
             log(rateRemaining, "requests remaining this hour!")
 
         if rateRemaining == 0:
