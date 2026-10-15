@@ -62,6 +62,8 @@ else:
 
 HTTP = CacheControl(sess, cache=FileCache(CACHE_DIR.resolve()))
 
+last_github_response = None
+
 
 def loadVersions(url=MASTER):
     with tempfile.NamedTemporaryFile(mode="w") as f:
@@ -147,6 +149,7 @@ def sleepUntil(timestamp):
 
 
 def getEndpoint(endpoint, base="https://api.github.com/", max_retries=10):
+    global last_github_response
     url = urljoin(base, endpoint)
     error_sleep = 1
     for _ in range(max_retries):
@@ -208,7 +211,8 @@ def getEndpoint(endpoint, base="https://api.github.com/", max_retries=10):
             continue
 
         try:
-            return resp.json()
+            last_github_response = resp.json()
+            return last_github_response
         except JSONDecodeError:
             # GitHub returns empty JSON sometimes? Very flaky, but anoying if it happens...
             # https://github.com/nix-community/nixpkgs-update-github-releases/issues/8
@@ -363,33 +367,44 @@ def getNextVersion(version, homepage):
 
 
 def updateLines(meta):
+    global last_github_response
     for name, values in meta.items():
-        # skip python3*, packages have an updateScript
-        if name.startswith("python3"):
-            continue
+        try:
+            last_github_response = None
 
-        # skip typstPackages*, package set
-        if name.startswith("typstPackages"):
-            continue
+            # skip python3*, packages have an updateScript
+            if name.startswith("python3"):
+                continue
 
-        version = values["version"]
+            # skip typstPackages*, package set
+            if name.startswith("typstPackages"):
+                continue
 
-        for page in values["pages"]:
-            userRepo = getUserRepoPair(page)
-            if userRepo is not None:
-                break
-        else:
-            continue
+            version = values["version"]
 
-        user, repo = userRepo
+            for page in values["pages"]:
+                userRepo = getUserRepoPair(page)
+                if userRepo is not None:
+                    break
+            else:
+                continue
 
-        nextVersion = getNextVersion(version, page)
-        if nextVersion is None:
-            continue
+            user, repo = userRepo
 
-        url = f"https://github.com/{user}/{repo}/releases"
+            nextVersion = getNextVersion(version, page)
+            if nextVersion is None:
+                continue
 
-        yield name, version, nextVersion, url
+            url = f"https://github.com/{user}/{repo}/releases"
+
+            yield name, version, nextVersion, url
+        except Exception:
+            log(f"Exception while handling '{name}'")
+            plog(values)
+            if last_github_response is not None:
+                log("Last response from GitHub:")
+                plog(last_github_response)
+            raise
 
 
 def main():
